@@ -49,47 +49,47 @@
 			FREE_HASHTABLE(a); \
 		} 
 
-#define PROCESS_JSON_RESULT(code, object, assoc) \
+#define PROCESS_JSON_RESULT(code, object) \
 	if (code != -1 && object->lastresponse.c) { \
 		MAKE_STD_ZVAL(zret); \
 		ZVAL_STRINGL(zret, object->lastresponse.c, object->lastresponse.len, 1); \
 		couchdb_set_response_args(object->properties, zret TSRMLS_CC); \
-		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, assoc TSRMLS_CC); \
+		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, object->assoc TSRMLS_CC); \
 		return; \
 	}else{ \
 		RETURN_NULL(); \
 	} \
 
-#define PROCESS_JSON_RESULT_EX(code, object, assoc) \
+#define PROCESS_JSON_RESULT_EX(code, object) \
 	if (code != -1 && object->lastresponse.c) { \
 		MAKE_STD_ZVAL(zret); \
 		ZVAL_STRINGL(zret, object->lastresponse.c, object->lastresponse.len, 1); \
 		couchdb_set_response_args(object->properties, zret TSRMLS_CC); \
-		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, assoc TSRMLS_CC); \
+		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, object->assoc TSRMLS_CC); \
 		return; \
 	}else{ \
 		COUCHDB_ERROR(0, object->lastresponse.c); \
 	} \
 
-#define PROCESS_JSON_RESULT_COMPART(code, object, assoc) \
+#define PROCESS_JSON_RESULT_COMPART(code, object) \
 	long depth = JSON_PARSER_DEFAULT_DEPTH; \
 	if (code != -1 && object->lastresponse.c) { \
 		MAKE_STD_ZVAL(zret); \
 		ZVAL_STRINGL(zret, object->lastresponse.c, object->lastresponse.len, 1); \
 		couchdb_set_response_args(object->properties, zret TSRMLS_CC); \
-		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, assoc, depth TSRMLS_CC); \
+		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, object->assoc, depth TSRMLS_CC); \
 		return; \
 	}else{ \
 		RETURN_NULL(); \
 	} \
 
-#define PROCESS_JSON_RESULT_COMPART_EX(code, object, assoc) \
+#define PROCESS_JSON_RESULT_COMPART_EX(code, object) \
 	long depth = JSON_PARSER_DEFAULT_DEPTH; \
 	if (code != -1 && object->lastresponse.c) { \
 		MAKE_STD_ZVAL(zret); \
 		ZVAL_STRINGL(zret, object->lastresponse.c, object->lastresponse.len, 1); \
 		couchdb_set_response_args(object->properties, zret TSRMLS_CC); \
-		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, assoc, depth TSRMLS_CC); \
+		php_json_decode(return_value, object->lastresponse.c, object->lastresponse.len, object->assoc, depth TSRMLS_CC); \
 		return; \
 	}else{ \
 		if (object->lastresponse.len) { \
@@ -159,6 +159,7 @@ typedef struct _php_couchdb_object {
 	smart_str lastrequest;
 	smart_str cookie;
 	zend_bool use_cookie_auth;
+	zend_bool assoc;
 	uint previous:28;
 	zval *this_ptr;
 } php_couchdb_object;
@@ -648,7 +649,6 @@ static void _couchdb_getdbinfo(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
 	int db_name_len = 0;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|s", &db_name, &db_name_len) == FAILURE) {
@@ -677,9 +677,9 @@ static void _couchdb_getdbinfo(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
 	smart_str_free(&surl);	
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -752,7 +752,7 @@ static void _couchdb_sendrequest(INTERNAL_FUNCTION_PARAMETERS, int type, zend_bo
 
 /* ---- METHODS ---- */
 
-/* {{{ proto void CouchdbClient::__construct(string url [,bool use_cookie_auth [, string db_name]]) 
+/* {{{ proto void CouchdbClient::__construct(string url [,bool use_cookie_auth [, string db_name [, bool assoc]]]) 
  Constructor of the CouchdbClient class */
 TC_METHOD(__construct)
 {
@@ -764,11 +764,12 @@ TC_METHOD(__construct)
 	int uri_len, db_name_len = 0;
 	php_url *urlparts;
 	zend_bool use_cookie_auth = 0;
+	zend_bool assoc = 0;
 	
 	obj = getThis();
 	local_client = fetch_couchdb_object(obj TSRMLS_CC);
 	
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|bs", &uri, &uri_len, &use_cookie_auth, &db_name, &db_name_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|bsb", &uri, &uri_len, &use_cookie_auth, &db_name, &db_name_len, &assoc) == FAILURE) {
 		return;
 	}
 	
@@ -803,6 +804,7 @@ TC_METHOD(__construct)
 	local_client->lastrequest.c = NULL;
 	local_client->previous = 0;
 	local_client->use_cookie_auth = 0;
+	local_client->assoc = assoc;
 	
 	if (!db_name_len) {
 		db_name = "";
@@ -962,7 +964,6 @@ TC_METHOD(getDatabaseChanges)
 	int db_name_len = 0;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL, *query_options;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|a", &query_options) == FAILURE) {
@@ -990,9 +991,9 @@ TC_METHOD(getDatabaseChanges)
 	smart_str_free(&surl);	
 	
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 }
 /* }}} */
@@ -1008,7 +1009,7 @@ TC_METHOD(getAllDocs)
 	smart_str surl = {0};
 	int db_name_len = 0;
 	long http_response_code;
-	zend_bool by_sequence = 0, assoc = 1;
+	zend_bool by_sequence = 0;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|ba", &by_sequence, &query_options) == FAILURE) {
 		return;
@@ -1039,9 +1040,9 @@ TC_METHOD(getAllDocs)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1058,7 +1059,6 @@ TC_METHOD(getDoc)
 	smart_str surl = {0};
 	zval *options = NULL, *zret;
 	long http_response_code;
-	zend_bool assoc = 0;
 	zend_bool raw = 0;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|ab", &doc_id, &doc_id_len, &options, &raw) == FAILURE) {
@@ -1098,9 +1098,9 @@ TC_METHOD(getDoc)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 	
 }
@@ -1254,9 +1254,9 @@ TC_METHOD(storeDoc)
     FREE_ARGS_HASH(rheaders);
 	
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)	
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 }
 /* }}} */
@@ -1421,9 +1421,9 @@ TC_METHOD(storeDocs)
 	smart_str_free(&surl);
 	
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)	
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 	
 }
@@ -1527,9 +1527,9 @@ TC_METHOD(getTempView)
 	FREE_ARGS_HASH(rheaders);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1545,7 +1545,6 @@ TC_METHOD(getView)
 	smart_str surl = {0};
 	long http_response_code;
 	zval *zret, *query_options = NULL;
-	zend_bool assoc = 0;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|a", &design_doc, &design_doc_len,
 							  &view_name, &view_name_len, &query_options) == FAILURE) {
@@ -1584,9 +1583,9 @@ TC_METHOD(getView)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1603,7 +1602,6 @@ TC_METHOD(copyDoc)
 	int db_name_len = 0, doc_id_len = 0, new_doc_id_len = 0, new_doc_revision_len = 0;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	HashTable *rheaders = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|s", &doc_id, &doc_id_len, 
@@ -1657,9 +1655,9 @@ TC_METHOD(copyDoc)
 	FREE_ARGS_HASH(rheaders);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 	
 }
@@ -1678,7 +1676,6 @@ TC_METHOD(storeAttachment)
 	php_stream *file_stream;
 	zval *zret;
 	long http_response_code, maxlen = PHP_STREAM_COPY_ALL;
-	zend_bool assoc = 0;
 	HashTable *rheaders = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssss|s", &doc_id, &doc_id_len, &filename, &filename_len,
@@ -1754,9 +1751,9 @@ TC_METHOD(storeAttachment)
 	FREE_ARGS_HASH(rheaders);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 	
 }
@@ -1773,7 +1770,6 @@ TC_METHOD(deleteAttachment)
 	int db_name_len = 0, doc_id_len = 0, attachment_name_len = 0, doc_rev_len = 0;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 0;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &doc_id, &doc_id_len, &attachment_name, 
 							  &attachment_name_len, &doc_rev, &doc_rev_len) == FAILURE) {
@@ -1815,9 +1811,9 @@ TC_METHOD(deleteAttachment)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART_EX(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT_EX(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_EX(http_response_code, local_client);
 #endif
 	
 }
@@ -1830,7 +1826,6 @@ TC_METHOD(getServerInfo)
 	php_couchdb_object *local_client;
 	char *url = NULL;
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
@@ -1844,9 +1839,9 @@ TC_METHOD(getServerInfo)
 	http_response_code = couchdb_prepare_request(local_client, url, COUCHDB_GET, NULL, NULL, 0 TSRMLS_CC);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1861,7 +1856,6 @@ TC_METHOD(getServerConfig)
 	int group_len = 0;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|s", &group, &group_len) == FAILURE) {
@@ -1885,9 +1879,9 @@ TC_METHOD(getServerConfig)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1901,7 +1895,6 @@ TC_METHOD(getServerStats)
 	char *url = NULL;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
@@ -1921,9 +1914,9 @@ TC_METHOD(getServerStats)
 	smart_str_free(&surl);
 	
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1938,7 +1931,6 @@ TC_METHOD(listDatabases)
 	char *url = NULL;
 	smart_str surl = {0};
 	long http_response_code;
-	zend_bool assoc = 1;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
@@ -1958,9 +1950,9 @@ TC_METHOD(listDatabases)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -1975,7 +1967,6 @@ TC_METHOD(listActiveTasks)
 	smart_str surl = {0};
 	long http_response_code;
 	zval *zret = NULL;
-	zend_bool assoc = 1;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
 		return;
@@ -1994,9 +1985,9 @@ TC_METHOD(listActiveTasks)
 	smart_str_free(&surl);
 	
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 		
 }
@@ -2011,7 +2002,6 @@ TC_METHOD(getUuids)
 	smart_str surl = {0};
 	int count = 0;
 	long http_response_code;
-	zend_bool assoc = 0;
 	zval * zret = NULL;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|l", &count) == FAILURE) {
@@ -2036,9 +2026,9 @@ TC_METHOD(getUuids)
 	smart_str_free(&surl);
 
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
-	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT_COMPART(http_response_code, local_client);
 #else
-	PROCESS_JSON_RESULT(http_response_code, local_client, assoc);
+	PROCESS_JSON_RESULT(http_response_code, local_client);
 #endif
 	
 }
@@ -2099,7 +2089,7 @@ TC_METHOD(startReplication)
 TC_METHOD(getLastResponse)
 {
 	php_couchdb_object *local_client;
-	zend_bool json_decode = 0, assoc = 0;
+	zend_bool json_decode = 0;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|b", &json_decode) == FAILURE) {
 		return;
@@ -2111,9 +2101,9 @@ TC_METHOD(getLastResponse)
 		if (json_decode) {
 #if (PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION >= 3) || (PHP_MAJOR_VERSION > 5)
 			long depth = JSON_PARSER_DEFAULT_DEPTH;
-			php_json_decode(return_value, local_client->lastresponse.c, local_client->lastresponse.len, assoc, depth TSRMLS_CC);
+			php_json_decode(return_value, local_client->lastresponse.c, local_client->lastresponse.len, local_client->assoc, depth TSRMLS_CC);
 #else
-			php_json_decode(return_value, local_client->lastresponse.c, local_client->lastresponse.len, assoc TSRMLS_CC);
+			php_json_decode(return_value, local_client->lastresponse.c, local_client->lastresponse.len, local_client->assoc TSRMLS_CC);
 #endif
 		}else {
 			RETURN_STRINGL(local_client->lastresponse.c, local_client->lastresponse.len, 1);
@@ -2281,6 +2271,7 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_couchdb_client__construct, 0,0,1)
 	ZEND_ARG_INFO(0, uri)
 	ZEND_ARG_INFO(0, use_cookie_auth)
 	ZEND_ARG_INFO(0, db_name)
+	ZEND_ARG_INFO(0, assoc)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_couchdb_getdbinfo, 0, 0, 0)
